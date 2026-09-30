@@ -1,10 +1,107 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Pick Your Number</title><style>:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#172033;background:#f6f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh}.wrap{max-width:560px;margin:auto;padding:22px 16px 40px}.card{background:white;border:1px solid #e7e9ef;border-radius:24px;padding:22px;box-shadow:0 10px 30px #0000000d}h1{margin:0 0 6px;font-size:28px}.sub{margin:0 0 20px;color:#687085}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.icon{border:0;border-radius:20px;background:#f2f4f8;min-height:125px;font-size:54px;cursor:pointer;transition:.15s;box-shadow:inset 0 0 0 1px #e7e9ef}.icon:active{transform:scale(.96)}.result{text-align:center;padding:26px 12px}.big{font-size:72px;font-weight:800;margin:8px 0}button.primary{border:0;border-radius:14px;padding:14px 18px;background:#172033;color:white;font-size:16px;font-weight:700;cursor:pointer}.room{display:flex;gap:8px;margin-bottom:18px}.room input{flex:1;padding:13px;border:1px solid #dfe3ea;border-radius:12px;font-size:16px;text-transform:uppercase}.note{font-size:13px;color:#7b8394;margin-top:14px;line-height:1.5}.hidden{display:none}.status{text-align:center;margin:10px 0 16px;color:#687085;font-size:14px}.code{text-align:center;font-weight:800;letter-spacing:3px;font-size:22px;margin:8px 0 20px}</style></head><body><div class="wrap"><div class="card"><h1>Pick Your Number</h1><p class="sub">Choose one icon. Your hidden number will be revealed.</p><div id="join"><div class="room"><input id="room" maxlength="6" placeholder="Room code" autocomplete="off"><button class="primary" onclick="joinRoom()">Join</button></div><button class="primary" style="width:100%" onclick="createRoom()">Create a room</button><p class="note">Share the room code with the other players. Claimed icons disappear for everyone in that room.</p></div><div id="game" class="hidden"><div class="code" id="code"></div><div class="status" id="status"></div><div id="choices" class="grid"></div><div id="result" class="result hidden"><div>Your number is</div><div class="big" id="number"></div><p class="sub">Your choice is locked for this round.</p></div></div></div></div><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
-const SUPABASE_URL='https://nsgbunljrlniftmoklzn.supabase.co',SUPABASE_KEY='sb_publishable_HoBJgWVBOF1ckE6aAwTNWA_GKSJULRN',client=supabase.createClient(SUPABASE_URL,SUPABASE_KEY),icons=['🦁','🌙','🚀','🍀','🎸','🔥','🐬','⭐','🎯','🌈'];let roomCode='',participantId=localStorage.getItem('picker_participant_id'),picked=false;participantId||(participantId=crypto.randomUUID(),localStorage.setItem('picker_participant_id',participantId));
-const code=()=>Math.random().toString(36).slice(2,8).toUpperCase(),mapping=()=>{const n=[1,2,3,4,5,6,7,8,9,10].sort(()=>Math.random()-.5),m={};for(let i=1;i<=10;i++)m[i]=n[i-1];return m};
-async function createRoom(){roomCode=code();const{error}=await client.from('rooms').insert({room_code:roomCode,mapping:mapping()});if(error)return alert('Could not create room. Please try again.');start()}
-async function joinRoom(){const v=document.getElementById('room').value.trim().toUpperCase();if(v.length!==6)return alert('Enter the 6-character room code.');const{data}=await client.from('rooms').select('room_code').eq('room_code',v).maybeSingle();if(!data)return alert('Room not found. Check the code and try again.');roomCode=v;start()}
-function start(){document.getElementById('join').classList.add('hidden');document.getElementById('game').classList.remove('hidden');document.getElementById('code').textContent=roomCode;client.channel('room-'+roomCode).on('postgres_changes',{event:'INSERT',schema:'public',table:'picks',filter:'room_code=eq.'+roomCode},refresh).subscribe();refresh()}
-async function refresh(){const{data,error}=await client.from('picks').select('icon_id,participant_id').eq('room_code',roomCode);if(error)return;const taken=new Set((data||[]).map(x=>x.icon_id)),mine=(data||[]).find(x=>x.participant_id===participantId);if(mine){picked=true;showResult()}const box=document.getElementById('choices');box.innerHTML='';for(let i=1;i<=10;i++)if(!taken.has(i)){const b=document.createElement('button');b.className='icon';b.textContent=icons[i-1];b.onclick=()=>pick(i);box.appendChild(b)}document.getElementById('status').textContent=taken.size>=10?'All 10 picks are complete.':(10-taken.size)+' icon'+(10-taken.size===1?'':'s')+' remaining';if(picked)box.classList.add('hidden')}
-async function pick(iconId){if(picked)return;picked=true;const{data,error}=await client.rpc('claim_icon',{p_room_code:roomCode,p_icon_id:iconId,p_participant_id:participantId});if(error){picked=false;alert(error.message.includes('already picked')?'That icon was just picked. Please choose another.':'Could not claim that icon. Please try again.');return refresh()}document.getElementById('number').textContent=data;showResult();refresh()}
-function showResult(){document.getElementById('choices').classList.add('hidden');document.getElementById('result').classList.remove('hidden')}
-</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pick Your Number</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#172033;background:#f6f7fb}
+*{box-sizing:border-box}body{margin:0;min-height:100vh}.wrap{max-width:560px;margin:auto;padding:22px 16px 40px}
+.card{background:white;border:1px solid #e7e9ef;border-radius:24px;padding:22px;box-shadow:0 10px 30px #0000000d}
+h1{margin:0 0 6px;font-size:28px}.sub{margin:0 0 20px;color:#687085}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.icon{border:0;border-radius:20px;background:#f2f4f8;min-height:125px;font-size:54px;cursor:pointer;transition:.15s;box-shadow:inset 0 0 0 1px #e7e9ef}
+.icon:active{transform:scale(.96)}.result{text-align:center;padding:26px 12px}.big{font-size:72px;font-weight:800;margin:8px 0}
+button.primary{border:0;border-radius:14px;padding:14px 18px;background:#172033;color:white;font-size:16px;font-weight:700;cursor:pointer}
+.room{display:flex;gap:8px;margin-bottom:18px}.room input{flex:1;padding:13px;border:1px solid #dfe3ea;border-radius:12px;font-size:16px;text-transform:uppercase}
+.note{font-size:13px;color:#7b8394;margin-top:14px;line-height:1.5}.hidden{display:none}.status{text-align:center;margin:10px 0 16px;color:#687085;font-size:14px}
+.code{text-align:center;font-weight:800;letter-spacing:3px;font-size:22px;margin:8px 0 20px}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+<h1>Pick Your Number</h1>
+<p class="sub">10 people. One pick each. Choose an icon and reveal your number.</p>
+
+<div id="join">
+<div class="room"><input id="room" maxlength="6" placeholder="Room code" autocomplete="off"><button class="primary" onclick="joinRoom()">Join</button></div>
+<button class="primary" style="width:100%" onclick="createRoom()">Create a room</button>
+<p class="note">Share the 6-character room code with the other 9 people. The game allows a maximum of 10 successful picks.</p>
+</div>
+
+<div id="game" class="hidden">
+<div class="code" id="code"></div>
+<div class="status" id="status"></div>
+<div id="choices" class="grid"></div>
+<div id="result" class="result hidden"><div>Your number is</div><div class="big" id="number"></div><p class="sub">Your one pick is locked for this room.</p></div>
+</div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://nsgbunljrlniftmoklzn.supabase.co';
+const SUPABASE_KEY='sb_publishable_HoBJgWVBOF1ckE6aAwTNWA_GKSJULRN';
+const client=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const icons=['🦁','🌙','🚀','🍀','🎸','🔥','🐬','⭐','🎯','🌈'];
+let roomCode='',participantId=localStorage.getItem('picker_participant_id'),picked=false;
+if(!participantId){participantId=crypto.randomUUID();localStorage.setItem('picker_participant_id',participantId)}
+
+function makeCode(){return Math.random().toString(36).slice(2,8).toUpperCase()}
+
+async function createRoom(){
+  const {data,error}=await client.rpc('create_room');
+  if(error){alert('Could not create a room. Please try again.');return}
+  roomCode=data;startGame();
+}
+async function joinRoom(){
+  const value=document.getElementById('room').value.trim().toUpperCase();
+  if(value.length!==6){alert('Enter the 6-character room code.');return}
+  const {data,error}=await client.rpc('room_exists',{p_room_code:value});
+  if(error||!data){alert('Room not found. Check the code and try again.');return}
+  roomCode=value;startGame();
+}
+function startGame(){
+  document.getElementById('join').classList.add('hidden');
+  document.getElementById('game').classList.remove('hidden');
+  document.getElementById('code').textContent=roomCode;
+  client.channel('room-'+roomCode)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'picks_public',filter:'room_code=eq.'+roomCode},refresh)
+    .subscribe();
+  refresh();
+}
+async function refresh(){
+  const {data,error}=await client.from('picks_public').select('icon_id,participant_id').eq('room_code',roomCode);
+  if(error)return;
+  const taken=new Set((data||[]).map(x=>x.icon_id));
+  const mine=(data||[]).some(x=>x.participant_id===participantId);
+  if(mine){picked=true;showResult()}
+  const box=document.getElementById('choices');
+  box.innerHTML='';
+  if(!picked){
+    for(let i=1;i<=10;i++) if(!taken.has(i)){
+      const b=document.createElement('button');
+      b.className='icon';b.textContent=icons[i-1];b.onclick=()=>pick(i);box.appendChild(b);
+    }
+  }
+  const remaining=10-taken.size;
+  document.getElementById('status').textContent=remaining===0?'All 10 people have picked.':remaining+' pick'+(remaining===1?'':'s')+' remaining';
+}
+async function pick(iconId){
+  if(picked)return;
+  picked=true;
+  const {data,error}=await client.rpc('claim_icon',{p_room_code:roomCode,p_icon_id:iconId,p_participant_id:participantId});
+  if(error){
+    picked=false;
+    alert(error.message.includes('already picked')?'You have already picked in this room.':error.message.includes('Icon already picked')?'That icon was just picked. Please choose another.':'Could not claim that icon. Please try again.');
+    return refresh();
+  }
+  document.getElementById('number').textContent=data;
+  showResult();
+  refresh();
+}
+function showResult(){
+  document.getElementById('choices').classList.add('hidden');
+  document.getElementById('result').classList.remove('hidden');
+}
+</script>
+</body>
+</html>
